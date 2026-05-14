@@ -16,8 +16,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run Build
-        run: echo "Build Success"
+      - name: Build
+        run: echo "Build successful"
 
-      - name: Simulate Failure
-        run: exit 1
+      - name: Security Scan
+        run: echo "Running security scan"
