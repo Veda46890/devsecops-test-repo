@@ -1,0 +1,50 @@
+name: DevSecOps Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+
+  security-scan:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy Security Scan
+        uses: aquasecurity/trivy-action@master
+
+        with:
+          scan-type: 'fs'
+          format: 'json'
+          output: 'trivy-results.json'
+
+      - name: Run OWASP Dependency Check
+
+        uses: dependency-check/Dependency-Check_Action@main
+
+        with:
+          project: 'DevSecOps Platform'
+          path: '.'
+          format: 'JSON'
+
+      - name: Upload Trivy Report
+
+        uses: actions/upload-artifact@v4
+
+        with:
+          name: trivy-report
+          path: trivy-results.json
+
+      - name: Upload Dependency Check Report
+
+        uses: actions/upload-artifact@v4
+
+        with:
+          name: dependency-check-report
+          path: reports/dependency-check-report.json
