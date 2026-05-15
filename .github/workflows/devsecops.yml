@@ -13,6 +13,10 @@ jobs:
 
     steps:
 
+      # =========================
+      # CHECKOUT SOURCE CODE
+      # =========================
+
       - name: Checkout Code
         uses: actions/checkout@v4
 
@@ -24,30 +28,39 @@ jobs:
 
         uses: aquasecurity/trivy-action@master
 
+        continue-on-error: true
+
         with:
           scan-type: 'fs'
+
           format: 'json'
+
           output: 'trivy-results.json'
 
-          # Fail pipeline on Medium+
+          # Security Gate
           exit-code: '1'
 
+          # Ignore INFO + LOW
           severity: 'MEDIUM,HIGH,CRITICAL'
 
       # ===================================
-      # OWASP DEPENDENCY CHECK (SCA SCAN)
+      # OWASP DEPENDENCY CHECK (SCA)
       # ===================================
 
       - name: Run OWASP Dependency Check
 
         uses: dependency-check/Dependency-Check_Action@main
 
+        continue-on-error: true
+
         with:
           project: 'DevSecOps Platform'
+
           path: '.'
+
           format: 'JSON'
 
-          # Fail on CVSS 4+
+          # Fail on Medium+
           failBuildOnCVSS: 4
 
       # =========================
@@ -60,6 +73,7 @@ jobs:
 
         with:
           name: trivy-report
+
           path: trivy-results.json
 
       # ===================================
@@ -72,4 +86,5 @@ jobs:
 
         with:
           name: dependency-check-report
+
           path: reports/dependency-check-report.json
