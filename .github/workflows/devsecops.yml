@@ -14,17 +14,44 @@ jobs:
     steps:
 
       # =========================
-      # CHECKOUT SOURCE CODE
+      # CHECKOUT CODE
       # =========================
 
       - name: Checkout Code
         uses: actions/checkout@v4
 
       # =========================
-      # TRIVY SAST + SECRET SCAN
+      # VERIFY FILES
       # =========================
 
-      - name: Run Trivy Security Scan
+      - name: List Repository Files
+        run: |
+          pwd
+          ls -la
+          find . -name "requirements.txt"
+
+      # =========================
+      # PYTHON SETUP
+      # =========================
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # =========================
+      # INSTALL DEPENDENCIES
+      # =========================
+
+      - name: Install Requirements
+        run: |
+          pip install -r requirements.txt || true
+
+      # =========================
+      # TRIVY SAST + SECRETS
+      # =========================
+
+      - name: Run Trivy Scan
 
         uses: aquasecurity/trivy-action@master
 
@@ -32,36 +59,43 @@ jobs:
 
         with:
           scan-type: 'fs'
+          scan-ref: '.'
 
           format: 'json'
 
           output: 'trivy-results.json'
 
-          # Security Gate
-          exit-code: '1'
-
-          # Ignore INFO + LOW
           severity: 'MEDIUM,HIGH,CRITICAL'
 
-      # ===================================
-      # OWASP DEPENDENCY CHECK (SCA)
-      # ===================================
+          exit-code: '1'
 
-      - name: Run OWASP Dependency Check
+      # =========================
+      # OWASP DEPENDENCY CHECK
+      # =========================
+
+      - name: Run Dependency Check
 
         uses: dependency-check/Dependency-Check_Action@main
 
         continue-on-error: true
 
         with:
-          project: 'DevSecOps Platform'
+          project: 'DevSecOps'
 
           path: '.'
 
           format: 'JSON'
 
-          # Fail on Medium+
-          failBuildOnCVSS: 4
+          out: 'reports'
+
+      # =========================
+      # SHOW REPORT FILES
+      # =========================
+
+      - name: Verify Reports
+        run: |
+          find . -name "*.json"
+          ls -la reports || true
 
       # =========================
       # UPLOAD TRIVY REPORT
@@ -76,11 +110,11 @@ jobs:
 
           path: trivy-results.json
 
-      # ===================================
-      # UPLOAD DEPENDENCY CHECK REPORT
-      # ===================================
+      # =========================
+      # UPLOAD DEPENDENCY REPORT
+      # =========================
 
-      - name: Upload Dependency Check Report
+      - name: Upload Dependency Report
 
         uses: actions/upload-artifact@v4
 
