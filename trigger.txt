@@ -1,1 +1,3 @@
+password-1234
+adminpassword-9877
 pipeline trigger
