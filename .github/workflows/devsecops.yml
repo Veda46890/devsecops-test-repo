@@ -24,25 +24,25 @@ jobs:
 
     steps:
 
-      # =====================================
+      # =====================================================
       # CHECKOUT REPOSITORY
-      # =====================================
+      # =====================================================
 
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # =====================================
+      # =====================================================
       # INSTALL SEMGREP
-      # =====================================
+      # =====================================================
 
       - name: Install Semgrep
         run: |
 
           python3 -m pip install semgrep
 
-      # =====================================
+      # =====================================================
       # RUN SEMGREP SCAN
-      # =====================================
+      # =====================================================
 
       - name: Run Semgrep Scan
         run: |
@@ -52,9 +52,9 @@ jobs:
             --json \
             --output semgrep-report.json
 
-      # =====================================
+      # =====================================================
       # INSTALL JQ
-      # =====================================
+      # =====================================================
 
       - name: Install jq
         run: |
@@ -63,10 +63,37 @@ jobs:
 
           sudo apt-get install -y jq
 
-      # =====================================
-      # SECURITY GATE POLICY
-      # FAIL PIPELINE IF HIGH/CRITICAL
-      # =====================================
+      # =====================================================
+      # SHOW SEMGREP RESULTS
+      # =====================================================
+
+      - name: Show Semgrep Results
+        run: |
+
+          echo "===================================="
+
+          echo "SEMGREP RESULTS"
+
+          echo "===================================="
+
+          cat semgrep-report.json | jq '.results | length'
+
+      # =====================================================
+      # ALWAYS UPLOAD ARTIFACT
+      # IMPORTANT
+      # =====================================================
+
+      - name: Upload SAST Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-sast-report
+          path: semgrep-report.json
+
+      # =====================================================
+      # SECURITY GATE
+      # FAIL PIPELINE FOR HIGH/CRITICAL
+      # =====================================================
 
       - name: SAST Security Gate
         run: |
@@ -77,7 +104,7 @@ jobs:
 
           echo "===================================="
 
-          echo "SEMGRP SECURITY RESULTS"
+          echo "SEMGRP SECURITY GATE"
 
           echo "===================================="
 
@@ -95,18 +122,8 @@ jobs:
 
           fi
 
-      # =====================================
-      # UPLOAD SEMGREP REPORT
-      # =====================================
-
-      - name: Upload SAST Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: semgrep-sast-report
-          path: semgrep-report.json
-
   # =========================================================
-  # SCA - TRIVY FILESYSTEM SCAN
+  # SCA - TRIVY
   # =========================================================
 
   sca-trivy:
@@ -117,16 +134,16 @@ jobs:
 
     steps:
 
-      # =====================================
+      # =====================================================
       # CHECKOUT REPOSITORY
-      # =====================================
+      # =====================================================
 
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # =====================================
-      # RUN TRIVY SCA SCAN
-      # =====================================
+      # =====================================================
+      # RUN TRIVY FILESYSTEM SCAN
+      # =====================================================
 
       - name: Run Trivy Filesystem Scan
         uses: aquasecurity/trivy-action@master
@@ -135,9 +152,9 @@ jobs:
           format: json
           output: trivy-report.json
 
-      # =====================================
+      # =====================================================
       # INSTALL JQ
-      # =====================================
+      # =====================================================
 
       - name: Install jq
         run: |
@@ -146,10 +163,37 @@ jobs:
 
           sudo apt-get install -y jq
 
-      # =====================================
-      # SECURITY GATE POLICY
-      # FAIL IF HIGH/CRITICAL FOUND
-      # =====================================
+      # =====================================================
+      # SHOW TRIVY RESULTS
+      # =====================================================
+
+      - name: Show Trivy Results
+        run: |
+
+          echo "===================================="
+
+          echo "TRIVY RESULTS"
+
+          echo "===================================="
+
+          cat trivy-report.json | jq '.Results | length'
+
+      # =====================================================
+      # ALWAYS UPLOAD ARTIFACT
+      # IMPORTANT
+      # =====================================================
+
+      - name: Upload SCA Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-sca-report
+          path: trivy-report.json
+
+      # =====================================================
+      # SECURITY GATE
+      # FAIL PIPELINE FOR HIGH/CRITICAL
+      # =====================================================
 
       - name: SCA Security Gate
         run: |
@@ -160,7 +204,7 @@ jobs:
 
           echo "===================================="
 
-          echo "TRIVY SECURITY RESULTS"
+          echo "TRIVY SECURITY GATE"
 
           echo "===================================="
 
@@ -177,16 +221,6 @@ jobs:
             exit 1
 
           fi
-
-      # =====================================
-      # UPLOAD TRIVY REPORT
-      # =====================================
-
-      - name: Upload SCA Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-sca-report
-          path: trivy-report.json
 
   # =========================================================
   # SECURITY PIPELINE SUMMARY
