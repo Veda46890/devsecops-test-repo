@@ -1,124 +1,275 @@
-name: DevSecOps Pipeline
+name: DevSecOps Security Pipeline
 
 on:
+
   push:
+    branches:
+      - main
+
+  pull_request:
     branches:
       - main
 
 jobs:
 
-  security-scan:
+  # =========================================================
+  # BUILD JOB
+  # =========================================================
+
+  build:
+
+    name: Application Build
 
     runs-on: ubuntu-latest
 
     steps:
 
-      # =========================
-      # CHECKOUT CODE
-      # =========================
-
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # =========================
-      # VERIFY FILES
-      # =========================
-
-      - name: List Repository Files
-        run: |
-          pwd
-          ls -la
-          find . -name "requirements.txt"
-
-      # =========================
-      # PYTHON SETUP
-      # =========================
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          python-version: '3.11'
+          node-version: 20
 
-      # =========================
-      # INSTALL DEPENDENCIES
-      # =========================
-
-      - name: Install Requirements
+      - name: Install Frontend Dependencies
         run: |
-          pip install -r requirements.txt || true
 
-      # =========================
-      # TRIVY SAST + SECRETS
-      # =========================
+          cd frontend
 
-      - name: Run Trivy Scan
+          npm install
 
-        uses: aquasecurity/trivy-action@master
+      - name: Build Frontend
+        run: |
 
-        continue-on-error: true
+          cd frontend
 
+          npm run build
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
         with:
-          scan-type: 'fs'
-          scan-ref: '.'
+          name: frontend-build
+          path: frontend/build
 
-          format: 'json'
+  # =========================================================
+  # SAST - SEMGREP
+  # =========================================================
 
-          output: 'trivy-results.json'
+  sast-semgrep:
 
-          severity: 'MEDIUM,HIGH,CRITICAL'
+    name: SAST Security Scan
 
-          exit-code: '1'
+    runs-on: ubuntu-latest
 
-      # =========================
-      # OWASP DEPENDENCY CHECK
-      # =========================
+    needs: build
 
-      - name: Run Dependency Check
+    steps:
 
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Semgrep
+        run: |
+
+          python3 -m pip install semgrep
+
+      - name: Run Semgrep Scan
+        run: |
+
+          semgrep scan \
+            --config=auto \
+            --json \
+            --output semgrep-report.json
+
+      # =====================================================
+      # PIPELINE FAIL GATING POLICY
+      # FAIL IF HIGH OR CRITICAL FOUND
+      # =====================================================
+
+      - name: Check Semgrep Critical/High Findings
+        run: |
+
+          CRITICAL=$(cat semgrep-report.json | jq '[.results[] | select(.extra.severity=="ERROR")] | length')
+
+          HIGH=$(cat semgrep-report.json | jq '[.results[] | select(.extra.severity=="WARNING")] | length')
+
+          echo "Critical Findings: $CRITICAL"
+
+          echo "High Findings: $HIGH"
+
+          if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+
+            echo "SAST Security Gate Failed"
+
+            exit 1
+
+          fi
+
+      - name: Upload SAST Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-sast-report
+          path: semgrep-report.json
+
+  # =========================================================
+  # SCA - OWASP DEPENDENCY CHECK
+  # =========================================================
+
+  sca-dependency-check:
+
+    name: SCA Dependency Scan
+
+    runs-on: ubuntu-latest
+
+    needs: build
+
+    steps:
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Run OWASP Dependency Check
         uses: dependency-check/Dependency-Check_Action@main
-
-        continue-on-error: true
-
         with:
-          project: 'DevSecOps'
+          project: "DevSecOps Platform"
+          path: "."
+          format: "JSON"
+          out: "dependency-check-report"
 
-          path: '.'
+      # =====================================================
+      # PIPELINE FAIL GATING POLICY
+      # FAIL IF HIGH OR CRITICAL FOUND
+      # =====================================================
 
-          format: 'JSON'
-
-          out: 'reports'
-
-      # =========================
-      # SHOW REPORT FILES
-      # =========================
-
-      - name: Verify Reports
+      - name: Check Dependency Check Findings
         run: |
-          find . -name "*.json"
-          ls -la reports || true
 
-      # =========================
-      # UPLOAD TRIVY REPORT
-      # =========================
+          sudo apt-get update
 
-      - name: Upload Trivy Report
+          sudo apt-get install -y jq
 
+          REPORT=$(find . -name "dependency-check-report.json" | head -1)
+
+          echo "Dependency Report Path: $REPORT"
+
+          CRITICAL=$(cat $REPORT | jq '[.dependencies[].vulnerabilities[]? | select(.severity=="CRITICAL")] | length')
+
+          HIGH=$(cat $REPORT | jq '[.dependencies[].vulnerabilities[]? | select(.severity=="HIGH")] | length')
+
+          echo "Critical Findings: $CRITICAL"
+
+          echo "High Findings: $HIGH"
+
+          if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+
+            echo "SCA Security Gate Failed"
+
+            exit 1
+
+          fi
+
+      - name: Upload SCA Artifact
         uses: actions/upload-artifact@v4
-
-        with:
-          name: trivy-report
-
-          path: trivy-results.json
-
-      # =========================
-      # UPLOAD DEPENDENCY REPORT
-      # =========================
-
-      - name: Upload Dependency Report
-
-        uses: actions/upload-artifact@v4
-
         with:
           name: dependency-check-report
+          path: dependency-check-report
 
-          path: reports/dependency-check-report.json
+  # =========================================================
+  # TRIVY CONTAINER / FILESYSTEM SCAN
+  # =========================================================
+
+  trivy-security:
+
+    name: Trivy Security Scan
+
+    runs-on: ubuntu-latest
+
+    needs: build
+
+    steps:
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Run Trivy Filesystem Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          format: json
+          output: trivy-report.json
+
+      # =====================================================
+      # PIPELINE FAIL GATING POLICY
+      # =====================================================
+
+      - name: Check Trivy Findings
+        run: |
+
+          sudo apt-get update
+
+          sudo apt-get install -y jq
+
+          CRITICAL=$(cat trivy-report.json | jq '[.Results[].Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length')
+
+          HIGH=$(cat trivy-report.json | jq '[.Results[].Vulnerabilities[]? | select(.Severity=="HIGH")] | length')
+
+          echo "Critical Findings: $CRITICAL"
+
+          echo "High Findings: $HIGH"
+
+          if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+
+            echo "Trivy Security Gate Failed"
+
+            exit 1
+
+          fi
+
+      - name: Upload Trivy Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report
+          path: trivy-report.json
+
+  # =========================================================
+  # FINAL SECURITY STATUS
+  # =========================================================
+
+  security-summary:
+
+    name: Security Pipeline Summary
+
+    runs-on: ubuntu-latest
+
+    needs:
+      - sast-semgrep
+      - sca-dependency-check
+      - trivy-security
+
+    if: always()
+
+    steps:
+
+      - name: Security Pipeline Status
+        run: |
+
+          echo "======================================"
+
+          echo "DEVSECOPS SECURITY PIPELINE COMPLETED"
+
+          echo "======================================"
+
+          echo "SAST  : Completed"
+
+          echo "SCA   : Completed"
+
+          echo "TRIVY : Completed"
+
+          echo "======================================"
